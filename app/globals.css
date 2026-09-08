@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-line;
+  }
+  body {
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid theme("colors.shield");
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/*
+  The one deliberate signature moment: the submission card reads like a
+  hastily forwarded slip of paper, dog-eared at the corner, rather than
+  another rounded SaaS card with a soft grey shadow.
+*/
+.chit {
+  position: relative;
+  background: theme("colors.sand");
+  border: 1px solid theme("colors.line");
+  border-radius: 2px;
+}
+
+.chit::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 22px;
+  height: 22px;
+  background: theme("colors.paper");
+  border-left: 1px solid theme("colors.line");
+  border-bottom: 1px solid theme("colors.line");
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
