@@ -1,13 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI } from "@google/genai";
 import { SYSTEM_PROMPT } from "./prompts";
 import type { AnalysisResult, AnalyzeRequestBody, Verdict } from "./types";
 
-// Model choice: claude-sonnet-5 is a good default balance of quality and
-// cost for a consumer product. If per-check cost matters more than nuance
-// at your scale, claude-haiku-4-5-20251001 is a cheaper drop-in swap.
-// Check https://docs.claude.com for current model IDs and pricing before
-// you ship — this list changes over time.
-const MODEL = "claude-sonnet-5";
+const MODEL = "gemini-3.5-flash";
 
 const VALID_VERDICTS: Verdict[] = [
   "red_flag",
@@ -16,28 +11,61 @@ const VALID_VERDICTS: Verdict[] = [
 ];
 
 function getClient() {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
+
   if (!apiKey) {
     throw new Error(
-      "ANTHROPIC_API_KEY is not set. Add it to .env.local (see .env.example)."
+      "GEMINI_API_KEY is not set. Add it to .env.local (see .env.example)."
     );
   }
-  return new Anthropic({ apiKey });
+
+  return new GoogleGenAI({ apiKey });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-/**
- * Validates the model's JSON output actually matches our contract before
- * it ever reaches the UI. Never trust model output blindly for something
- * users make decisions from.
- */
-function parseAnalysisResult(raw: string): AnalysisResult {
-  const cleaned = raw.replace(/```json|```/g, "").trim();
+
+function normalizeForGrounding(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[`"'â€œâ€â€˜â€™]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+
+function evidenceDetailIsGrounded(
+  detail: string,
+  submittedText: string
+): boolean {
+  const evidence = normalizeForGrounding(detail);
+  const source = normalizeForGrounding(submittedText);
+
+  if (!evidence || !source) {
+    return false;
+  }
+
+  // Evidence must be directly present in the submitted text.
+  return source.includes(evidence);
+}
+
+
+
+function parseAnalysisResult(
+  raw: string,
+  submittedText?: string
+): AnalysisResult {
+  const cleaned = raw
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
 
   let parsed: unknown;
+
   try {
     parsed = JSON.parse(cleaned);
   } catch {
@@ -48,40 +76,146 @@ function parseAnalysisResult(raw: string): AnalysisResult {
     throw new Error("Model response was not a JSON object.");
   }
 
-  const { verdict, headline, evidence, whatToDo, uncertaintyNote } = parsed;
+  const {
+    verdict,
+    headline,
+    evidence,
+    whatToDo,
+    uncertaintyNote,
+  } = parsed;
 
-  if (typeof verdict !== "string" || !VALID_VERDICTS.includes(verdict as Verdict)) {
-    throw new Error(`Model returned an invalid verdict: ${String(verdict)}`);
+  if (
+    typeof verdict !== "string" ||
+    !VALID_VERDICTS.includes(verdict as Verdict)
+  ) {
+    throw new Error(
+      `Model returned an invalid verdict: ${String(verdict)}`
+    );
   }
+
   if (typeof headline !== "string" || !headline.trim()) {
     throw new Error("Model response is missing a headline.");
   }
+
   if (!Array.isArray(evidence)) {
     throw new Error("Model response is missing an evidence array.");
   }
+
+  if (evidence.length > 4) {
+    throw new Error("Model returned too many evidence items.");
+  }
+
   const cleanEvidence = evidence.map((item, i) => {
     if (
       !isRecord(item) ||
       typeof item.detail !== "string" ||
-      typeof item.whyItMatters !== "string"
+      typeof item.whyItMatters !== "string" ||
+      !item.detail.trim() ||
+      !item.whyItMatters.trim()
     ) {
       throw new Error(`Evidence item ${i} is malformed.`);
     }
-    return { detail: item.detail, whyItMatters: item.whyItMatters };
+
+  const detail = item.detail.trim();
+const whyItMatters = item.whyItMatters.trim();
+
+if (submittedText?.trim()) {
+
+
+  if (!evidenceDetailIsGrounded(detail, submittedText)) {
+
+
+ console.error("UNGROUNDED EVIDENCE DETAIL:", JSON.stringify(detail));
+console.error("SUBMITTED TEXT:", JSON.stringify(submittedText));
+
+  throw new Error(
+    `Evidence item ${i} is not grounded in the submitted text.`
+  );
+}
+
+
+}
+
+return {
+  detail,
+  whyItMatters,
+};
+
+
   });
+
   if (typeof whatToDo !== "string" || !whatToDo.trim()) {
     throw new Error("Model response is missing whatToDo.");
   }
 
+  if (
+    uncertaintyNote !== null &&
+    uncertaintyNote !== undefined &&
+    typeof uncertaintyNote !== "string"
+  ) {
+    throw new Error("Model uncertaintyNote is malformed.");
+  }
+
   return {
     verdict: verdict as Verdict,
-    headline,
+    headline: headline.trim(),
     evidence: cleanEvidence,
-    whatToDo,
+    whatToDo: whatToDo.trim(),
     uncertaintyNote:
-      typeof uncertaintyNote === "string" ? uncertaintyNote : null,
+      typeof uncertaintyNote === "string"
+        ? uncertaintyNote.trim()
+        : null,
   };
 }
+
+
+
+const RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    verdict: {
+      type: "string",
+      enum: [
+        "red_flag",
+        "looks_okay_but_confirm",
+        "not_enough_info",
+      ],
+    },
+    headline: {
+      type: "string",
+    },
+    evidence: {
+      type: "array",
+      minItems: 1,
+      maxItems: 4,
+      items: {
+        type: "object",
+        properties: {
+          detail: {
+            type: "string",
+          },
+          whyItMatters: {
+            type: "string",
+          },
+        },
+        required: ["detail", "whyItMatters"],
+      },
+    },
+    whatToDo: {
+      type: "string",
+    },
+    uncertaintyNote: {
+      type: ["string", "null"],
+    },
+  },
+  required: [
+    "verdict",
+    "headline",
+    "evidence",
+    "whatToDo",
+    "uncertaintyNote",
+  ],
+};
 
 export async function analyzeSubmission(
   body: AnalyzeRequestBody
@@ -92,38 +226,67 @@ export async function analyzeSubmission(
     throw new Error("Submit some text or an image to analyze.");
   }
 
-  const content: Array<Anthropic.Messages.TextBlockParam | Anthropic.Messages.ImageBlockParam> = [];
+  const parts: Array<Record<string, unknown>> = [];
 
   if (imageBase64 && imageMediaType) {
-    content.push({
-      type: "image",
-      source: {
-        type: "base64",
-        media_type: imageMediaType,
+    parts.push({
+      inlineData: {
+        mimeType: imageMediaType,
         data: imageBase64,
       },
     });
   }
 
-  content.push({
-    type: "text",
-    text: text?.trim() || "See the attached image. No extra text was given.",
+  parts.push({
+    text:
+      text?.trim() ||
+      "See the attached image. No extra text was given.",
   });
 
   const client = getClient();
-  const response = await client.messages.create({
+
+  const response = await client.models.generateContent({
     model: MODEL,
-    max_tokens: 1024,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content }],
+    contents: [
+      {
+        role: "user",
+        parts,
+      },
+    ],
+
+
+    config: {
+  systemInstruction: SYSTEM_PROMPT,
+
+  // Dhaal needs short, predictable structured responses.
+  // Low thinking reduces unnecessary internal reasoning for this
+  // simple classification task and leaves more room for the JSON.
+
+  maxOutputTokens: 2048,
+
+  responseMimeType: "application/json",
+  responseSchema: RESPONSE_SCHEMA,
+},
+
   });
 
-  const textBlock = response.content.find(
-    (block): block is Anthropic.Messages.TextBlock => block.type === "text"
-  );
-  if (!textBlock) {
-    throw new Error("Model returned no text content.");
-  }
+const responseText = response.text;
 
-  return parseAnalysisResult(textBlock.text);
+if (!responseText || !responseText.trim()) {
+  console.error("Gemini returned no text content.", {
+    hasCandidates: Boolean(response.candidates?.length),
+    finishReason: response.candidates?.[0]?.finishReason,
+  });
+
+  throw new Error("Model returned no text content.");
+}
+
+console.log("Gemini response metadata:", {
+  length: responseText.length,
+  startsWith: responseText.slice(0, 30),
+  endsWith: responseText.slice(-30),
+  finishReason: response.candidates?.[0]?.finishReason,
+});
+
+return parseAnalysisResult(responseText, text);
 }
