@@ -1,8 +1,9 @@
-import { GoogleGenAI } from "@google/genai";
+import Groq from "groq-sdk";
 import { SYSTEM_PROMPT } from "./prompts";
 import type { AnalysisResult, AnalyzeRequestBody, Verdict } from "./types";
 
-const MODEL = "gemini-3.5-flash";
+const TEXT_MODEL = "openai/gpt-oss-20b";
+const VISION_MODEL = "qwen/qwen3.8-27b";
 
 const VALID_VERDICTS: Verdict[] = [
   "red_flag",
@@ -11,21 +12,20 @@ const VALID_VERDICTS: Verdict[] = [
 ];
 
 function getClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY;
 
   if (!apiKey) {
     throw new Error(
-      "GEMINI_API_KEY is not set. Add it to .env.local (see .env.example)."
+      "GROQ_API_KEY is not set. Add it to .env.local (see .env.example)."
     );
   }
 
-  return new GoogleGenAI({ apiKey });
+  return new Groq({ apiKey });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
-
 
 function normalizeForGrounding(value: string): string {
   return value
@@ -35,7 +35,6 @@ function normalizeForGrounding(value: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
-
 
 function evidenceDetailIsGrounded(
   detail: string,
@@ -48,11 +47,8 @@ function evidenceDetailIsGrounded(
     return false;
   }
 
-  // Evidence must be directly present in the submitted text.
   return source.includes(evidence);
 }
-
-
 
 function parseAnalysisResult(
   raw: string,
@@ -116,32 +112,30 @@ function parseAnalysisResult(
       throw new Error(`Evidence item ${i} is malformed.`);
     }
 
-  const detail = item.detail.trim();
-const whyItMatters = item.whyItMatters.trim();
+    const detail = item.detail.trim();
+    const whyItMatters = item.whyItMatters.trim();
 
-if (submittedText?.trim()) {
+    if (submittedText?.trim()) {
+      if (!evidenceDetailIsGrounded(detail, submittedText)) {
+        console.error(
+          "UNGROUNDED EVIDENCE DETAIL:",
+          JSON.stringify(detail)
+        );
+        console.error(
+          "SUBMITTED TEXT:",
+          JSON.stringify(submittedText)
+        );
 
+        throw new Error(
+          `Evidence item ${i} is not grounded in the submitted text.`
+        );
+      }
+    }
 
-  if (!evidenceDetailIsGrounded(detail, submittedText)) {
-
-
- console.error("UNGROUNDED EVIDENCE DETAIL:", JSON.stringify(detail));
-console.error("SUBMITTED TEXT:", JSON.stringify(submittedText));
-
-  throw new Error(
-    `Evidence item ${i} is not grounded in the submitted text.`
-  );
-}
-
-
-}
-
-return {
-  detail,
-  whyItMatters,
-};
-
-
+    return {
+      detail,
+      whyItMatters,
+    };
   });
 
   if (typeof whatToDo !== "string" || !whatToDo.trim()) {
@@ -167,8 +161,6 @@ return {
         : null,
   };
 }
-
-
 
 const RESPONSE_SCHEMA = {
   type: "object",
@@ -199,14 +191,18 @@ const RESPONSE_SCHEMA = {
           },
         },
         required: ["detail", "whyItMatters"],
+        additionalProperties: false,
       },
     },
     whatToDo: {
       type: "string",
     },
-    uncertaintyNote: {
-      type: ["string", "null"],
-    },
+
+uncertaintyNote: {
+  type: ["string", "null"],
+},
+
+
   },
   required: [
     "verdict",
@@ -215,6 +211,7 @@ const RESPONSE_SCHEMA = {
     "whatToDo",
     "uncertaintyNote",
   ],
+  additionalProperties: false,
 };
 
 export async function analyzeSubmission(
@@ -226,66 +223,78 @@ export async function analyzeSubmission(
     throw new Error("Submit some text or an image to analyze.");
   }
 
-  const parts: Array<Record<string, unknown>> = [];
 
-  if (imageBase64 && imageMediaType) {
-    parts.push({
-      inlineData: {
-        mimeType: imageMediaType,
-        data: imageBase64,
-      },
-    });
-  }
-
-  parts.push({
-    text:
-      text?.trim() ||
-      "See the attached image. No extra text was given.",
-  });
 
   const client = getClient();
 
-  const response = await client.models.generateContent({
-    model: MODEL,
-    contents: [
+
+  const userContent =
+  text?.trim() ||
+  "Analyze the attached screenshot according to the Dhaal rules.";
+
+const isVisionRequest = Boolean(imageBase64 && imageMediaType);
+
+const model = isVisionRequest ? VISION_MODEL : TEXT_MODEL;
+
+const messageContent = isVisionRequest
+  ? [
       {
-        role: "user",
-        parts,
+        type: "text" as const,
+        text: userContent,
       },
-    ],
+      {
+        type: "image_url" as const,
+        image_url: {
+          url: `data:${imageMediaType};base64,${imageBase64}`,
+        },
+      },
+    ]
+  : userContent;
 
+const response = await client.chat.completions.create({
+  model,
 
-    config: {
-  systemInstruction: SYSTEM_PROMPT,
+  messages: [
+    {
+      role: "system",
+      content: SYSTEM_PROMPT,
+    },
+    {
+      role: "user",
+      content: messageContent,
+    },
+  ],
 
-  // Dhaal needs short, predictable structured responses.
-  // Low thinking reduces unnecessary internal reasoning for this
-  // simple classification task and leaves more room for the JSON.
+  response_format: {
+    type: "json_schema",
+    json_schema: {
+      name: "dhaal_analysis",
+      strict: true,
+      schema: RESPONSE_SCHEMA,
+    },
+  },
 
-  maxOutputTokens: 2048,
+  max_tokens: 2048,
+});
 
-  responseMimeType: "application/json",
-  responseSchema: RESPONSE_SCHEMA,
-},
-
-  });
-
-const responseText = response.text;
+const responseText = response.choices[0]?.message?.content;
 
 if (!responseText || !responseText.trim()) {
-  console.error("Gemini returned no text content.", {
-    hasCandidates: Boolean(response.candidates?.length),
-    finishReason: response.candidates?.[0]?.finishReason,
+  console.error("Groq returned no text content.", {
+    model,
+    finishReason: response.choices[0]?.finish_reason,
   });
 
   throw new Error("Model returned no text content.");
 }
 
-console.log("Gemini response metadata:", {
+console.log("Groq response metadata:", {
+  model,
+  isVisionRequest,
   length: responseText.length,
   startsWith: responseText.slice(0, 30),
   endsWith: responseText.slice(-30),
-  finishReason: response.candidates?.[0]?.finishReason,
+  finishReason: response.choices[0]?.finish_reason,
 });
 
 return parseAnalysisResult(responseText, text);
