@@ -49,7 +49,21 @@ function evidenceDetailIsGrounded(
 
   return source.includes(evidence);
 }
+function whatToDoHasMultipleActions(value: string): boolean {
+  const normalized = value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 
+  return (
+    /\sya\s/.test(normalized) ||
+    /\saur\s/.test(normalized) ||
+    /\sand\s/.test(normalized) ||
+    /\salso\s/.test(normalized) ||
+    normalized.includes("/")
+  );
+}
 function parseAnalysisResult(
   raw: string,
   submittedText?: string
@@ -142,6 +156,18 @@ function parseAnalysisResult(
     throw new Error("Model response is missing whatToDo.");
   }
 
+const cleanWhatToDo = whatToDo.trim();
+
+if (whatToDoHasMultipleActions(cleanWhatToDo)) {
+  console.error(
+    "MULTIPLE ACTIONS IN whatToDo:",
+    JSON.stringify(cleanWhatToDo)
+  );
+
+  throw new Error(
+    "Model returned multiple actions in whatToDo."
+  );
+}
   if (
     uncertaintyNote !== null &&
     uncertaintyNote !== undefined &&
@@ -154,7 +180,7 @@ function parseAnalysisResult(
     verdict: verdict as Verdict,
     headline: headline.trim(),
     evidence: cleanEvidence,
-    whatToDo: whatToDo.trim(),
+    whatToDo: cleanWhatToDo,
     uncertaintyNote:
       typeof uncertaintyNote === "string"
         ? uncertaintyNote.trim()
