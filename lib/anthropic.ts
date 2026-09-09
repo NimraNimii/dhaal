@@ -273,8 +273,8 @@ const response = await client.chat.completions.create({
       schema: RESPONSE_SCHEMA,
     },
   },
+max_completion_tokens: 900,
 
-  max_tokens: 2048,
 });
 
 const responseText = response.choices[0]?.message?.content;
