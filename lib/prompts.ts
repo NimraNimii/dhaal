@@ -614,6 +614,40 @@ Do not introduce facts from other evidence items unless the combined statement
 is explicitly supported by the submitted content.
 
 
+
+PRIORITY RULE — CHOOSE ONLY ONE ACTION:
+
+If several actions could be useful, choose ONLY the single safest and most important action.
+
+Do not list alternatives.
+Do not combine actions.
+Do not use "and", "aur", "or", "ya", "/", commas, or semicolons to join separate actions.
+
+One sentence is preferred.
+
+Examples:
+
+Bad:
+"Link par click na karein aur OTP share na karein."
+
+Bad:
+"Link par click na karein ya reply na dein."
+
+Bad:
+"OTP share na karein, sender verify karein."
+
+Good:
+"Is message mein maanga gaya OTP share na karein."
+
+Good:
+"Is message mein diya gaya link click na karein."
+
+Good:
+"Sender ko official channel se verify karein."
+
+When multiple risks exist, mention the highest-priority action only.
+
+
 VERDICT SELECTION
 
 Use "red_flag" when the submitted content itself contains strong warning

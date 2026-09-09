@@ -56,13 +56,26 @@ function whatToDoHasMultipleActions(value: string): boolean {
     .replace(/\s+/g, " ")
     .trim();
 
-  return (
-    /\sya\s/.test(normalized) ||
-    /\saur\s/.test(normalized) ||
-    /\sand\s/.test(normalized) ||
-    /\salso\s/.test(normalized) ||
-    normalized.includes("/")
+  // Detect repeated imperative/action clauses rather than
+  // simply treating "aur", "and", etc. as multiple actions.
+  const actionClauses = normalized.match(
+    /\b(?:na\s+(?:karein|dein|bhejein|share\s+karein)|(?:karein|dein|bhejein|share\s+karein|click\s+karein|reply\s+karein|verify\s+karein))\b/g
   );
+
+  if (actionClauses && actionClauses.length > 1) {
+    return true;
+  }
+
+  // English-style separate actions.
+  const englishActions = normalized.match(
+    /\b(?:do not|don't|never)\s+\w+(?:\s+\w+){0,3}\b|\b(?:click|reply|verify|share|send|open|contact|call|visit|download|install|enter)\b/g
+  );
+
+  if (englishActions && englishActions.length > 1) {
+    return true;
+  }
+
+  return false;
 }
 function parseAnalysisResult(
   raw: string,
@@ -299,7 +312,8 @@ const response = await client.chat.completions.create({
       schema: RESPONSE_SCHEMA,
     },
   },
-max_completion_tokens: 900,
+  include_reasoning: false,
+max_completion_tokens: 1000,
 
 });
 
