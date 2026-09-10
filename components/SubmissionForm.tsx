@@ -103,11 +103,13 @@ export default function SubmissionForm({ onSubmit, isLoading }: Props) {
           </label>
         ) : (
           <div className="flex items-center gap-2 text-sm">
-            <img
-              src={image.previewUrl}
-              alt="Screenshot to analyze"
-              className="h-10 w-10 object-cover rounded-sm border border-line"
-            />
+          {/* Local blob preview; next/image is unnecessary here. */}
+{/* eslint-disable-next-line @next/next/no-img-element */}
+<img
+  src={image.previewUrl}
+  alt="Screenshot to analyze"
+  className="h-10 w-10 object-cover rounded-sm border border-line"
+/>
             <span className="text-graphite">{image.file.name}</span>
             <button
               type="button"

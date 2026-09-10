@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import SubmissionForm from "../components/SubmissionForm";
 import AnalysisResultCard from "../components/AnalysisResult";
 import type { AnalysisResult, AnalyzeRequestBody } from "../lib/types";
+import Link from "next/link";
 
 const examples = [
   {
@@ -78,7 +79,7 @@ export default function Home() {
       {/* NAVBAR */}
       <header className="sticky top-0 z-50 border-b border-[#DCCFB2]/70 bg-[#F7F2E6]/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
-          <a href="/" className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1F5C52] text-xl text-[#F7F2E6]">
               ◈
             </div>
@@ -92,7 +93,7 @@ export default function Home() {
                 Think before you tap.
               </div>
             </div>
-          </a>
+          </Link>
 
           <nav className="hidden items-center gap-8 text-sm font-medium md:flex">
             <a
