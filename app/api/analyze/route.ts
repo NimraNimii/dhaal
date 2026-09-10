@@ -8,10 +8,21 @@ import type { AnalyzeRequestBody } from "@/lib/types";
 // posture the concept validated on â€” don't add persistence without
 // updating this comment and telling users.
 export async function POST(req: NextRequest) {
-  let body: AnalyzeRequestBody;
-  try {
-    body = await req.json();
-  } catch {
+let body: AnalyzeRequestBody;
+try {
+  const parsed: unknown = await req.json();
+
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    Array.isArray(parsed)
+  ) {
+    throw new Error("Malformed request body.");
+  }
+
+  body = parsed as AnalyzeRequestBody;
+} catch {
+
     return NextResponse.json(
       { error: "Malformed request body." },
       { status: 400 }
@@ -28,8 +39,17 @@ export async function POST(req: NextRequest) {
 
     console.error("analyze error:", message);
 
-    const isClientError =
-      message === "Submit some text or an image to analyze.";
+  const isClientError =
+  message === "Submit some text or an image to analyze." ||
+  message === "Malformed request body." ||
+  message === "Invalid text input." ||
+  message === "Invalid image input." ||
+  message === "Invalid image type." ||
+  message === "That image type isn't supported." ||
+  message ===
+    "Text is too long. Please keep it under 10,000 characters." ||
+  message ===
+    "Image is too large. Please use an image under 5 MB.";
 
     return NextResponse.json(
       { error: message },

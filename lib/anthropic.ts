@@ -256,19 +256,87 @@ uncertaintyNote: {
 export async function analyzeSubmission(
   body: AnalyzeRequestBody
 ): Promise<AnalysisResult> {
-  const { text, imageBase64, imageMediaType } = body;
+if (!isRecord(body)) {
+  throw new Error("Malformed request body.");
+}
 
-  if (!text?.trim() && !imageBase64) {
+const rawBody = body as Record<string, unknown>;
+
+const text = rawBody.text;
+const imageBase64 = rawBody.imageBase64;
+const imageMediaType = rawBody.imageMediaType;
+
+  if (
+    text !== undefined &&
+    typeof text !== "string"
+  ) {
+    throw new Error("Invalid text input.");
+  }
+
+  if (
+    imageBase64 !== undefined &&
+    typeof imageBase64 !== "string"
+  ) {
+    throw new Error("Invalid image input.");
+  }
+
+  if (
+    imageMediaType !== undefined &&
+    typeof imageMediaType !== "string"
+  ) {
+    throw new Error("Invalid image type.");
+  }
+
+  const trimmedText = text?.trim();
+
+  if (!trimmedText && !imageBase64) {
     throw new Error("Submit some text or an image to analyze.");
   }
 
+  const MAX_TEXT_LENGTH = 10_000;
+  const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
+  if (trimmedText && trimmedText.length > MAX_TEXT_LENGTH) {
+    throw new Error("Text is too long. Please keep it under 10,000 characters.");
+  }
 
+  const acceptedImageTypes = [
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+  ] as const;
+
+  if (imageBase64) {
+    if (
+      !imageMediaType ||
+      !acceptedImageTypes.includes(
+        imageMediaType as (typeof acceptedImageTypes)[number]
+      )
+    ) {
+      throw new Error("That image type isn't supported.");
+    }
+
+    // Base64 encodes roughly 3 bytes into every 4 characters.
+    // Account for optional "=" padding when estimating decoded size.
+    const padding =
+      imageBase64.endsWith("==")
+        ? 2
+        : imageBase64.endsWith("=")
+          ? 1
+          : 0;
+
+    const estimatedImageBytes =
+      Math.floor((imageBase64.length * 3) / 4) - padding;
+
+    if (estimatedImageBytes > MAX_IMAGE_BYTES) {
+      throw new Error("Image is too large. Please use an image under 5 MB.");
+    }
+  }
   const client = getClient();
 
-
   const userContent =
-  text?.trim() ||
+  trimmedText ||
   "Analyze the attached screenshot according to the Dhaal rules.";
 
 const isVisionRequest = Boolean(imageBase64 && imageMediaType);
