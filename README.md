@@ -1,69 +1,72 @@
-# Dhaal — MVP
 
-A forward-anything inbox: paste a suspicious message or upload a screenshot,
-get back a straight answer with the specific evidence behind it — no scary
-percentages, no auto-blocking, in a warm Roman Urdu "smart cousin" voice.
+## 🧠 AI Architecture
 
-This is Phase 1 of the product (see `ARCHITECTURE.md` for the full roadmap):
-a stateless web app. Nothing submitted is stored anywhere.
+Dhaal uses a server-side AI analysis pipeline built around structured model output, evidence grounding, and validation.
 
-## Setup
+The core workflow includes:
 
-You'll need Node.js 18.17 or later.
+- Submission handling
+- Server-side AI analysis
+- Evidence-oriented prompting
+- Structured JSON response validation
+- Evidence grounding against submitted text
+- Single-action validation for user guidance
+- Result rendering
+- Clear user guidance
 
-```bash
-npm install
-cp .env.example .env.local
-```
+### AI Models
 
-Open `.env.local` and add your Anthropic API key (get one at
-https://console.anthropic.com/settings/keys):
+Dhaal currently uses the Groq API for its analysis pipeline:
 
-```
-ANTHROPIC_API_KEY=sk-ant-...
-```
+- **Text analysis:** `openai/gpt-oss-20b`
+- **Image analysis:** `qwen/qwen3.8-27b`
 
-Then run it locally:
+## 🛠️ Tech Stack
 
-```bash
-npm run dev
-```
+### Frontend & Application
 
-Visit http://localhost:3000.
+- Next.js 16
+- React 19
+- TypeScript
+- Tailwind CSS
 
-## How it works
+### AI & Backend
 
-1. `components/SubmissionForm.tsx` collects pasted text and/or an uploaded
-   screenshot, and turns the image into base64 in the browser.
-2. `app/api/analyze/route.ts` receives that submission and calls
-   `lib/anthropic.ts`.
-3. `lib/prompts.ts` holds the system prompt that encodes Dhaal's rules:
-   mandatory evidence citation, no fake confidence scores, no automated
-   actions, honest uncertainty.
-4. `lib/anthropic.ts` calls the Claude API (vision + text in one call when
-   there's an image) and validates the JSON that comes back before it's
-   trusted — malformed output becomes a clear error, never a silent guess.
-5. `components/AnalysisResult.tsx` renders the verdict, the cited evidence,
-   and one concrete next step.
+- Groq API
+- Groq TypeScript SDK
+- OpenAI GPT-OSS-20B
+- Qwen vision model
+- Next.js API Routes
 
-## Deploying
+### Development & Deployment
 
-The simplest path is Vercel, since this is an unmodified Next.js app:
+- Node.js
+- ESLint
+- TypeScript
+- Git & GitHub
+- Vercel
 
-1. Push this to a GitHub repo.
-2. Import it at https://vercel.com/new.
-3. Add `ANTHROPIC_API_KEY` as an environment variable in the Vercel project
-   settings.
-4. Deploy.
+  ## 🛠️ Tech Stack
 
-Any host that runs Next.js (Railway, Render, your own Node server) works
-too — the only required environment variable is `ANTHROPIC_API_KEY`.
+### Frontend & Application
 
-## What's deliberately NOT here yet
+- Next.js 16
+- React 19
+- TypeScript
+- Tailwind CSS
 
-- No accounts, no login, no database — see `ARCHITECTURE.md` Phase 2 for
-  when and why to add these (short answer: once someone wants to save a
-  history of checks, that's also when subscription billing makes sense).
-- No WhatsApp or email forwarding — see `ARCHITECTURE.md` Phase 3. Both
-  need a persistent backend and, for WhatsApp, Meta Business verification,
-  so they're deliberately out of the MVP.
+### AI & Backend
+
+- Groq API
+- Groq TypeScript SDK
+- OpenAI GPT-OSS-20B
+- Qwen vision model
+- Next.js API Routes
+
+### Development & Deployment
+
+- Node.js
+- ESLint
+- TypeScript
+- Git & GitHub
+- Vercel
